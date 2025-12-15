@@ -1,5 +1,5 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/sh
+set -e
 
 echo "Installing cloudflared..."
 
@@ -16,11 +16,16 @@ output="$("$BIN" tunnel login)"
 cert_path="$(printf '%s\n' "$output" | grep -E '^/.*/cert\.pem$')"
 echo "Cert path: $cert_path"
 
-docker network create openserver_bridge
+docker network create openserver-cloudflared-control-bridge
+docker network create openserver-control-user-bridge
+docker volume create openserver-volume
 
 docker build -t openserver/cloudflared ./cloudflared
 
-docker run openserver/cloudflared \
+docker run \
      --name cloudflared-container \
-     --network openserver_bridge \
-     --mount type=bind,source="$cert_path",target=/home/nonroot/.cloudflared/cert.pem
+     --volume openserver-volume:/home/nonroot/persistent-shared \
+     --network penserver-cloudflared-control-bridgee \
+     --mount type=bind,source="$cert_path",target=/home/nonroot/.cloudflared/cert.pem \
+     openserver/cloudflared \
+     openserver-tunnel
