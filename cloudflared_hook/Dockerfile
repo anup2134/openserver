@@ -8,6 +8,10 @@ RUN apk add --no-cache curl ca-certificates \
 RUN mkdir -p /home/nonroot/.cloudflared
 RUN chown -R 65532:65532 /home/nonroot
 
+RUN touch /home/nonroot/.cloudflared/config.yml
+RUN chmod 600 /home/nonroot/.cloudflared/config.yml
+RUN chown 65532:65532 /home/nonroot/.cloudflared/config.yml
+
 COPY entrypoint.sh /home/nonroot/entrypoint.sh
 RUN chmod +x /home/nonroot/entrypoint.sh
 

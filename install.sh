@@ -21,12 +21,11 @@ docker network create openserver-cloudflared-control-bridge
 docker network create openserver-control-user-bridge
 docker volume create openserver-volume
 
-docker build -t openserver/cloudflared ./cloudflared
+docker build -t openserver/cloudflared-hook ./cloudflared
 
 docker run \
      --name cloudflared-container \
      --volume openserver-volume:/home/nonroot/persistent-shared \
      --network penserver-cloudflared-control-bridgee \
      --mount type=bind,source="$cert_path",target=/home/nonroot/.cloudflared/cert.pem \
-     openserver/cloudflared
-
+     openserver/cloudflared-hook
