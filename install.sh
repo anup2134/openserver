@@ -15,6 +15,7 @@ echo "Launching Cloudflare tunnel login..."
 output="$("$BIN" tunnel login)"
 cert_path="$(printf '%s\n' "$output" | grep -E '^/.*/cert\.pem$')"
 echo "Cert path: $cert_path"
+chmod +r "$cert_path"
 
 docker network create openserver-cloudflared-control-bridge
 docker network create openserver-control-user-bridge
@@ -27,5 +28,11 @@ docker run \
      --volume openserver-volume:/home/nonroot/persistent-shared \
      --network penserver-cloudflared-control-bridgee \
      --mount type=bind,source="$cert_path",target=/home/nonroot/.cloudflared/cert.pem \
-     openserver/cloudflared \
-     openserver-tunnel
+     openserver/cloudflared
+
+docker run \
+     --name cloudflared-container \
+     --volume openserver-volume:/home/nonroot/.cloudflared \
+     --network openserver-cloudflared-control-bridge \
+     --mount type=bind,source=/home/anup/.cloudflared/cert.pem,target=/home/nonroot/.cloudflared/cert.pem \
+     openserver/cloudflared

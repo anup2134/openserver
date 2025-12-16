@@ -4,6 +4,7 @@ set -e
 if ! cloudflared tunnel info openserver-tunnel >/dev/null 2>&1; then
   echo "Tunnel does not exist. Creating..."
   cloudflared tunnel create openserver-tunnel
+  echo "Tunnel created."
 fi
 
 echo "Starting tunnel..."
