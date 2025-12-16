@@ -30,9 +30,3 @@ docker run \
      --mount type=bind,source="$cert_path",target=/home/nonroot/.cloudflared/cert.pem \
      openserver/cloudflared
 
-docker run \
-     --name cloudflared-container \
-     --volume openserver-volume:/home/nonroot/.cloudflared \
-     --network openserver-cloudflared-control-bridge \
-     --mount type=bind,source=/home/anup/.cloudflared/cert.pem,target=/home/nonroot/.cloudflared/cert.pem \
-     openserver/cloudflared
