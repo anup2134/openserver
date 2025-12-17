@@ -11,7 +11,7 @@ if ! cloudflared tunnel info openserver-tunnel >/dev/null 2>&1; then
     exit 1
   fi
 
-  printf "tunnel: %s\ncredentials-file: /home/nonroot/.cloudflared/%s.json\n" \
+  printf "tunnel: %s\ncredentials-file: /home/nonroot/.cloudflared/%s.json\n\ningress:\n" \
          "$tunnel_id" "$tunnel_id" \
          > /home/nonroot/.cloudflared/config.yml
   echo "Tunnel created."
