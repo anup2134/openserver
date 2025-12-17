@@ -63,8 +63,8 @@ func main() {
 		}
 
 		cmd := exec.Command("cloudflared", "tunnel", "route", "dns", tunnelId, request.Hostname)
-		var stdErr bytes.Buffer
 
+		var stdErr bytes.Buffer
 		cmd.Stderr = &stdErr
 
 		if err = cmd.Run(); err != nil {
