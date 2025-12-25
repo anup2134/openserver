@@ -1,3 +1,15 @@
+FROM golang:1.25-alpine AS builder
+WORKDIR /app
+
+COPY go.mod ./
+RUN go mod download
+
+COPY cloudflare_hook/ ./cloudflare_hook/
+COPY utils/ ./utils/
+
+WORKDIR /app/server
+RUN CGO_ENABLED=0 GOOS=linux go build -o /app/server-binary .
+
 FROM alpine:3.20
 
 RUN apk add --no-cache curl ca-certificates \
@@ -6,6 +18,7 @@ RUN apk add --no-cache curl ca-certificates \
  && chmod +x /usr/bin/cloudflared
 
 RUN mkdir -p /home/nonroot/.cloudflared
+COPY --from=builder /app/server-binary /home/nonroot
 RUN chown -R 65532:65532 /home/nonroot
 
 RUN touch /home/nonroot/.cloudflared/config.yml

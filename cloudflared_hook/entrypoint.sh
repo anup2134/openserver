@@ -5,7 +5,7 @@ if ! cloudflared tunnel info openserver-tunnel >/dev/null 2>&1; then
   echo "Tunnel does not exist. Creating..."
   cloudflared tunnel create openserver-tunnel
 
-  tunnel_id=$(cloudflared tunnel list --output json | jq -r '.[] | select(.name=="my-tunnel") | .id')
+  tunnel_id=$(cloudflared tunnel list --output json | jq -r '.[] | select(.name=="openserver-tunnel") | .id')
   if [ -z "$tunnel_id" ]; then
     echo "Error: tunnel 'openserver-tunnel' not found" >&2
     exit 1
@@ -18,4 +18,5 @@ if ! cloudflared tunnel info openserver-tunnel >/dev/null 2>&1; then
 fi
 
 echo "Starting tunnel..."
-exec cloudflared tunnel run openserver-tunnel
+cloudflared tunnel run openserver-tunnel &
+exec /home/nonroot/server-binary

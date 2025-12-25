@@ -21,7 +21,7 @@ docker network create openserver-cloudflared-control-bridge
 docker network create openserver-control-user-bridge
 docker volume create openserver-volume
 
-docker build -t openserver/cloudflared-hook ./cloudflared
+docker build -t cloudflared-hook ./cloudflared .
 
 docker run \
      --name cloudflared-container \

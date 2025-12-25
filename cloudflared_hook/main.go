@@ -2,11 +2,13 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"openserver/utils"
 	"os"
 	"os/exec"
+	"strings"
 )
 
 type hostnameRequest struct {
@@ -14,24 +16,49 @@ type hostnameRequest struct {
 	Service  string `json:"service"`
 }
 
+type jsonList struct {
+	Id          string `json:"id"`
+	Name        string `json:"name"`
+	CreatedAt   string `json:"created_at"`
+	DeletedAt   string `json:"deleted_at"`
+	Connections string `json:"connections"`
+}
+
 func main() {
-	command := `cloudflared tunnel list --output json | jq -r '.[] | select(.name=="openserver-tunnel") | .id'`
+	command := `cloudflared tunnel list --output json`
 
-	cmd := exec.Command("bash", "-c", command)
-	var stdIn, stdErr bytes.Buffer
+	shCmd := exec.Command("sh", "-c", command)
+	var stdOut, stdErr bytes.Buffer
 
-	cmd.Stderr = &stdErr
-	cmd.Stdin = &stdIn
+	shCmd.Stderr = &stdErr
+	shCmd.Stdout = &stdOut
 
-	if err := cmd.Run(); err != nil {
+	if err := shCmd.Run(); err != nil {
 		utils.ErrorLogger.Printf("Command failed: %s\nError while getting tunnel-id: %s", err.Error(), stdErr.String())
 		return
 	}
 
-	tunnelId := stdIn.String()
+	var tunnelJsonList []jsonList
+	err := json.Unmarshal(stdOut.Bytes(), &tunnelJsonList)
+	if err != nil {
+		utils.ErrorLogger.Printf("Failed to parse tunnel list: %s", err.Error())
+		return
+	}
+
+	if len(tunnelJsonList) == 0 {
+		utils.ErrorLogger.Println("Empty tunnel list")
+		return
+	}
+	tunnelId := ""
+	for i := range tunnelJsonList {
+		if tunnelJsonList[i].Name == "openserver-tunnel" {
+			tunnelId = tunnelJsonList[i].Id
+			break
+		}
+	}
 
 	if tunnelId == "" {
-		utils.ErrorLogger.Printf("No tunnel found named openserver-tunnel")
+		utils.ErrorLogger.Println("No tunnel named openserver-tunnel found")
 		return
 	}
 
@@ -49,6 +76,17 @@ func main() {
 			return
 		}
 
+		cmd := exec.Command("cloudflared", "tunnel", "route", "dns", tunnelId, request.Hostname)
+
+		var stdErr bytes.Buffer
+		cmd.Stderr = &stdErr
+
+		if err = cmd.Run(); err != nil {
+			utils.ErrorLogger.Printf("Error while routing dns: %s", stdErr.String())
+			utils.SendErrorResponse(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
 		content := fmt.Sprintf("  - hostname: %s\n    service: %s\n  - service: http_status:404\n\n", request.Hostname, request.Service)
 		f, err := os.OpenFile("/home/nonroot/.cloudflared/config.yml", os.O_APPEND|os.O_WRONLY, 0644)
 		if err != nil {
@@ -61,18 +99,35 @@ func main() {
 			utils.SendErrorResponse(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		stdErr.Reset()
+		stdOut.Reset()
 
-		cmd := exec.Command("cloudflared", "tunnel", "route", "dns", tunnelId, request.Hostname)
+		killCloudflared := exec.Command("pkill", "-f", `"cloudflared tunnel run"`)
 
-		var stdErr bytes.Buffer
-		cmd.Stderr = &stdErr
+		killCloudflared.Stderr = &stdErr
+		killCloudflared.Stdout = &stdOut
 
-		if err = cmd.Run(); err != nil {
-			utils.ErrorLogger.Printf("Error while routing dns: %s", stdErr.String())
+		if err = killCloudflared.Run(); err != nil {
 			utils.SendErrorResponse(w, err.Error(), http.StatusInternalServerError)
+			utils.ErrorLogger.Printf("Error while listing processes: %s", stdErr.String())
 			return
 		}
 
+		if strings.Trim(stdOut.String(), " ") == "" {
+			utils.ErrorLogger.Printf("Failed to kill the tunnel process")
+			return
+		}
+		stdErr.Reset()
+		stdOut.Reset()
+
+		rerunTunnel := exec.Command("cloudflared", "tunnel", "run", "openserver-tunnel")
+		rerunTunnel.Stderr = &stdErr
+
+		if err = rerunTunnel.Run(); err != nil {
+			utils.SendErrorResponse(w, err.Error(), http.StatusInternalServerError)
+			utils.ErrorLogger.Printf("Falied to start the tunnel: %s", stdErr.String())
+			return
+		}
 	})
 
 	http.ListenAndServe(":8080", nil)
