@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"openserver/utils"
 	"os"
+	"os/exec"
 	"runtime"
 )
 
@@ -45,6 +47,19 @@ func main() {
 			utils.SendErrorResponse(w, err.Error(), http.StatusUnauthorized)
 			return
 		}
+
+		gitCmd := exec.Command("git", "clone", "https://github.com/"+request.Owner+"/"+request.RepoName, "/home/nonroot/cloneTemp")
+		var stdOut, stdErr bytes.Buffer
+
+		gitCmd.Stderr = &stdErr
+		gitCmd.Stdout = &stdOut
+
+		if err := gitCmd.Run(); err != nil {
+			utils.SendErrorResponse(w, err.Error(), http.StatusInternalServerError)
+			utils.ErrorLogger.Printf("Error while cloning repo: %s", stdErr.String())
+			return
+		}
+
 	})
 
 	http.ListenAndServe(":8080", nil)

@@ -26,6 +26,6 @@ docker build -t cloudflared-hook ./cloudflared .
 docker run \
      --name cloudflared-container \
      --volume openserver-volume:/home/nonroot/persistent-shared \
-     --network penserver-cloudflared-control-bridgee \
+     --network openserver-cloudflared-control-bridge \
      --mount type=bind,source="$cert_path",target=/home/nonroot/.cloudflared/cert.pem \
      openserver/cloudflared-hook
