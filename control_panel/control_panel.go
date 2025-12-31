@@ -17,6 +17,8 @@ type buildRequest struct {
 	CommitHash string `json:"commit"`
 }
 
+var cloneDirAddr string = "/home/nonroot/cloneTmp/"
+
 func main() {
 	runtime.GOMAXPROCS(1)
 
@@ -48,7 +50,8 @@ func main() {
 			return
 		}
 
-		gitCmd := exec.Command("git", "clone", "https://github.com/"+request.Owner+"/"+request.RepoName, "/home/nonroot/cloneTemp")
+		gitCmd := exec.Command("git", "clone", "https://github.com/"+request.Owner+"/"+request.RepoName, cloneDirAddr+request.CommitHash)
+
 		var stdOut, stdErr bytes.Buffer
 
 		gitCmd.Stderr = &stdErr
@@ -77,4 +80,11 @@ func authorization(authHeader string) error {
 		return fmt.Errorf("incorrect auth token")
 	}
 	return nil
+}
+
+func cleanupCloneDir(dirName string) {
+	err := os.RemoveAll(cloneDirAddr + dirName)
+	if err != nil {
+		utils.ErrorLogger.Printf("Error while deleting clone directory: %s", err.Error())
+	}
 }
