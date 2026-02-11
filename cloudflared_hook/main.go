@@ -38,26 +38,26 @@ func main() {
 		return
 	}
 
-	var tunnelJsonList []jsonList
-	err := json.Unmarshal(stdOut.Bytes(), &tunnelJsonList)
+	var tunnelJSONList []jsonList
+	err := json.Unmarshal(stdOut.Bytes(), &tunnelJSONList)
 	if err != nil {
 		utils.ErrorLogger.Printf("Failed to parse tunnel list: %s", err.Error())
 		return
 	}
 
-	if len(tunnelJsonList) == 0 {
+	if len(tunnelJSONList) == 0 {
 		utils.ErrorLogger.Println("Empty tunnel list")
 		return
 	}
-	tunnelId := ""
-	for i := range tunnelJsonList {
-		if tunnelJsonList[i].Name == "openserver-tunnel" {
-			tunnelId = tunnelJsonList[i].Id
+	tunnelID := ""
+	for i := range tunnelJSONList {
+		if tunnelJSONList[i].Name == "openserver-tunnel" {
+			tunnelID = tunnelJSONList[i].Id
 			break
 		}
 	}
 
-	if tunnelId == "" {
+	if tunnelID == "" {
 		utils.ErrorLogger.Println("No tunnel named openserver-tunnel found")
 		return
 	}
@@ -76,7 +76,7 @@ func main() {
 			return
 		}
 
-		cmd := exec.Command("cloudflared", "tunnel", "route", "dns", tunnelId, request.Hostname)
+		cmd := exec.Command("cloudflared", "tunnel", "route", "dns", tunnelID, request.Hostname)
 
 		var stdErr bytes.Buffer
 		cmd.Stderr = &stdErr

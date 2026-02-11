@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"fmt"
 	"net/http"
-	"openserver/utils"
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
+
+	"openserver/utils"
 )
 
 type buildRequest struct {
@@ -17,18 +19,18 @@ type buildRequest struct {
 	CommitHash string `json:"commit"`
 }
 
-var cloneDirAddr string = "/home/nonroot/cloneTmp/"
+var tmpCloneDir string = "/home/nonroot/cloneTmp/"
 
 func main() {
 	runtime.GOMAXPROCS(1)
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/build_image", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			utils.SendErrorResponse(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 
-		defer r.Body.Close()
+		defer closeRequestBody(r)
 
 		request := &buildRequest{}
 		err := utils.DecodeRequestJSON(r.Body, request)
@@ -49,8 +51,8 @@ func main() {
 			utils.SendErrorResponse(w, err.Error(), http.StatusUnauthorized)
 			return
 		}
-
-		gitCmd := exec.Command("git", "clone", "https://github.com/"+request.Owner+"/"+request.RepoName, cloneDirAddr+request.CommitHash)
+		cloneDir := tmpCloneDir + request.CommitHash
+		gitCmd := exec.Command("git", "clone", "https://github.com/"+request.Owner+"/"+request.RepoName, cloneDir)
 
 		var stdOut, stdErr bytes.Buffer
 
@@ -62,10 +64,20 @@ func main() {
 			utils.ErrorLogger.Printf("Error while cloning repo: %s", stdErr.String())
 			return
 		}
+		defer cleanupCloneDir(cloneDir)
+		imageTag := strings.ToLower(request.Owner + "." + request.RepoName)
 
+		err = buildDockerImage(cloneDir, imageTag)
+		if err != nil {
+			utils.SendErrorResponse(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	})
 
-	http.ListenAndServe(":8080", nil)
+	err := http.ListenAndServe(":8080", nil)
+	if err != nil {
+		fmt.Printf("Error occured while starting http server: %s\n", err.Error())
+	}
 }
 
 func authorization(authHeader string) error {
@@ -83,8 +95,31 @@ func authorization(authHeader string) error {
 }
 
 func cleanupCloneDir(dirName string) {
-	err := os.RemoveAll(cloneDirAddr + dirName)
+	err := os.RemoveAll(tmpCloneDir + dirName)
 	if err != nil {
 		utils.ErrorLogger.Printf("Error while deleting clone directory: %s", err.Error())
 	}
+}
+
+func closeRequestBody(r *http.Request) {
+	err := r.Body.Close()
+	if err != nil {
+		utils.ErrorLogger.Printf("Error occured while closing request body: %s\n", err.Error())
+	}
+}
+
+func buildDockerImage(pathToCloneDir string, imageTag string) error {
+	dockerCmd := exec.Command("docker", "build", "-t", imageTag, pathToCloneDir)
+
+	var stdOut, stdErr bytes.Buffer
+	dockerCmd.Stderr = &stdErr
+	dockerCmd.Stdout = &stdOut
+
+	if err := dockerCmd.Run(); err != nil {
+		dockerErrorMessage := stdErr.String()
+		utils.ErrorLogger.Printf("Docker build failed: %v | Command Output: %s\n", err, dockerErrorMessage)
+		return fmt.Errorf("docker build error: %w (details: %s)", err, dockerErrorMessage)
+	}
+
+	return nil
 }
