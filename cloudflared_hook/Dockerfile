@@ -23,8 +23,11 @@ RUN apk add --no-cache curl ca-certificates \
 COPY --from=builder /app/cloudflared-hook-binary /home/nonroot
 RUN chown -R 65532:65532 /home/nonroot \
   && touch /home/nonroot/.cloudflared/config.yml \
-  && chmod 600 /home/nonroot/.cloudflared/config.yml \ 
-  && chown 65532:65532 /home/nonroot/.cloudflared/config.yml
+  && chmod 600 /home/nonroot/.cloudflared/config.yml \
+  && chown 65532:65532 /home/nonroot/.cloudflared/config.yml \
+  && touch /home/nonroot/.cloudflared/Records.txt \
+  && chmod 600 /home/nonroot/.cloudflared/Records.txt \
+  && chown 65532:65532 /home/nonroot/.cloudflared/Records.txt
 
 COPY entrypoint.sh /home/nonroot/entrypoint.sh
 RUN chmod +x /home/nonroot/entrypoint.sh

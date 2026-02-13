@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"openserver/utils"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
+
+	"openserver/utils"
 )
 
 type hostnameRequest struct {
@@ -68,7 +70,7 @@ func main() {
 			return
 		}
 
-		defer r.Body.Close()
+		defer utils.CloseRequestBody(r)
 		request := &hostnameRequest{}
 		err := utils.DecodeRequestJSON(r.Body, request)
 		if err != nil {
@@ -88,13 +90,19 @@ func main() {
 		}
 
 		content := fmt.Sprintf("  - hostname: %s\n    service: %s\n  - service: http_status:404\n\n", request.Hostname, request.Service)
-		f, err := os.OpenFile("/home/nonroot/.cloudflared/config.yml", os.O_APPEND|os.O_WRONLY, 0644)
+		f, err := os.OpenFile("/home/nonroot/.cloudflared/config.yml", os.O_APPEND|os.O_WRONLY, 0o644)
 		if err != nil {
 			utils.SendErrorResponse(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		defer f.Close()
+		defer func() {
+			err := f.Close()
+			if err != nil {
+				utils.ErrorLogger.Printf("Failed to close config.yml file: %s\n", err.Error())
+			}
+		}()
+
 		if _, err = f.WriteString(content); err != nil {
 			utils.SendErrorResponse(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -113,7 +121,7 @@ func main() {
 			return
 		}
 
-		if strings.Trim(stdOut.String(), " ") == "" {
+		if strings.TrimSpace(stdOut.String()) == "" {
 			utils.ErrorLogger.Printf("Failed to kill the tunnel process")
 			return
 		}
@@ -130,5 +138,44 @@ func main() {
 		}
 	})
 
-	http.ListenAndServe(":8080", nil)
+	http.HandleFunc("/get_available_port", func(w http.ResponseWriter, r *http.Request) {
+		data, err := os.ReadFile("/home/nonroot/.cloudflared/Records.txt")
+		if err != nil {
+			utils.ErrorLogger.Printf("Failed to read Records.txt file: %s\n", err.Error())
+			utils.SendErrorResponse(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		records := strings.Split(string(data), "\n")
+		if len(records) == 0 {
+			_, err := w.Write([]byte("3000"))
+			if err != nil {
+				utils.ErrorLogger.Printf("Failed to write to response writer: %s\n", err.Error())
+				utils.SendErrorResponse(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			return
+		}
+		lastRecord := strings.Split(records[len(records)-1], ",")
+
+		lastUsedPort, err := strconv.Atoi(strings.TrimSpace(lastRecord[2]))
+		if err != nil {
+			utils.ErrorLogger.Printf("Invalid file format for Records.txt: %s", err.Error())
+			utils.SendErrorResponse(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		nextPort := strconv.FormatUint(uint64(lastUsedPort)+1, 10)
+		_, err = w.Write([]byte(nextPort))
+		if err != nil {
+			utils.ErrorLogger.Printf("Failed to write to response writer: %s\n", err.Error())
+			utils.SendErrorResponse(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	})
+
+	err = http.ListenAndServe(":8080", nil)
+	if err != nil {
+		utils.ErrorLogger.Printf("Failed to start the http server: %s", err.Error())
+	}
 }

@@ -15,7 +15,6 @@ var (
 )
 
 func SendErrorResponse(w http.ResponseWriter, msg string, code int) {
-	InfoLogger.Print(msg)
 	http.Error(w, msg, code)
 }
 
@@ -28,4 +27,11 @@ func DecodeRequestJSON(requestBody io.ReadCloser, jsonSchema any) error {
 		return fmt.Errorf("invalid JSON")
 	}
 	return nil
+}
+
+func CloseRequestBody(r *http.Request) {
+	err := r.Body.Close()
+	if err != nil {
+		ErrorLogger.Printf("Error occured while closing request body: %s\n", err.Error())
+	}
 }

@@ -30,7 +30,7 @@ func main() {
 			return
 		}
 
-		defer closeRequestBody(r)
+		defer utils.CloseRequestBody(r)
 
 		request := &buildRequest{}
 		err := utils.DecodeRequestJSON(r.Body, request)
@@ -72,6 +72,12 @@ func main() {
 			utils.SendErrorResponse(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+
+		err = runDockerContainer(imageTag)
+		if err != nil {
+			utils.SendErrorResponse(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	})
 
 	err := http.ListenAndServe(":8080", nil)
@@ -101,13 +107,6 @@ func cleanupCloneDir(dirName string) {
 	}
 }
 
-func closeRequestBody(r *http.Request) {
-	err := r.Body.Close()
-	if err != nil {
-		utils.ErrorLogger.Printf("Error occured while closing request body: %s\n", err.Error())
-	}
-}
-
 func buildDockerImage(pathToCloneDir string, imageTag string) error {
 	dockerCmd := exec.Command("docker", "build", "-t", imageTag, pathToCloneDir)
 
@@ -121,5 +120,18 @@ func buildDockerImage(pathToCloneDir string, imageTag string) error {
 		return fmt.Errorf("docker build error: %w (details: %s)", err, dockerErrorMessage)
 	}
 
+	return nil
+}
+
+func runDockerContainer(imageTag string) error {
+	dockerRunCmd := exec.Command("docker", "run", "-p", "{host_port}:8000", imageTag)
+
+	var stdOut, stdErr bytes.Buffer
+	dockerRunCmd.Stderr = &stdErr
+	dockerRunCmd.Stdout = &stdOut
+	if err := dockerRunCmd.Run(); err != nil {
+		utils.ErrorLogger.Printf("Running docker container failed: %s\nCommand output: %s", err.Error(), stdErr.String())
+		return err
+	}
 	return nil
 }
