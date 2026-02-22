@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -17,6 +18,7 @@ type buildRequest struct {
 	Event      string `json:"event"`
 	RepoName   string `json:"repoName"`
 	CommitHash string `json:"commit"`
+	HostName   string `json:"hostname"` // domian/subdomain name for cloudflared tunnel config
 }
 
 var tmpCloneDir string = "/home/nonroot/cloneTmp/"
@@ -38,7 +40,7 @@ func main() {
 			utils.SendErrorResponse(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if request.Event == "" || request.RepoName == "" || request.Owner == "" || request.CommitHash == "" {
+		if request.Event == "" || request.RepoName == "" || request.Owner == "" || request.CommitHash == "" || request.HostName == "" {
 			utils.SendErrorResponse(w, "missing required fields", http.StatusBadRequest)
 			return
 		}
@@ -75,6 +77,42 @@ func main() {
 
 		err = runDockerContainer(imageTag)
 		if err != nil {
+			deleteDockerImage(imageTag)
+			utils.SendErrorResponse(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		cloudflaredRequestJSON := []byte(fmt.Sprintf(`{"hostname":"%s","service":"%s"}`, request.HostName, imageTag))
+		req, err := http.NewRequest("POST", "http://cloudflared-container:8080/add_hostname", bytes.NewBuffer(cloudflaredRequestJSON))
+		if err != nil {
+			deleteDockerImage(imageTag)
+			utils.SendErrorResponse(w, err.Error(), http.StatusInternalServerError)
+			utils.ErrorLogger.Printf("Failed to add hostname\nError Message: %s\n", err.Error())
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			deleteDockerImage(imageTag)
+			utils.ErrorLogger.Printf("Failed to get the response\nError Message: %s\n", err.Error())
+			utils.SendErrorResponse(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if resp.StatusCode != 201 {
+			deleteDockerImage(imageTag)
+			utils.ErrorLogger.Printf("Failed to create record in cloudflared config\n")
+			utils.SendErrorResponse(w, "Failed to create cloudflared config record", http.StatusInternalServerError)
+			return
+		}
+
+		defer resp.Body.Close()
+
+		_, err = io.ReadAll(resp.Body)
+		if err != nil {
+			deleteDockerImage(imageTag)
+			utils.ErrorLogger.Printf("Failed to read response body\nError Message: %s\n", err.Error())
 			utils.SendErrorResponse(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -124,7 +162,7 @@ func buildDockerImage(pathToCloneDir string, imageTag string) error {
 }
 
 func runDockerContainer(imageTag string) error {
-	dockerRunCmd := exec.Command("docker", "run", "-p", "{host_port}:8000", imageTag)
+	dockerRunCmd := exec.Command("docker", "run", imageTag)
 
 	var stdOut, stdErr bytes.Buffer
 	dockerRunCmd.Stderr = &stdErr
@@ -134,4 +172,16 @@ func runDockerContainer(imageTag string) error {
 		return err
 	}
 	return nil
+}
+
+func deleteDockerImage(imageTag string) {
+	dockerImageRm := exec.Command("docker", "rmi", imageTag)
+
+	var stdOut, stdErr bytes.Buffer
+	dockerImageRm.Stderr = &stdErr
+	dockerImageRm.Stdout = &stdOut
+
+	if err := dockerImageRm.Run(); err != nil {
+		utils.ErrorLogger.Printf("Failed to delete docker image%s\nCommand output: %s\n", imageTag, stdErr.String())
+	}
 }

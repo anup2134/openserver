@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
 
 	"openserver/utils"
@@ -136,39 +135,11 @@ func main() {
 			utils.ErrorLogger.Printf("Falied to start the tunnel: %s", stdErr.String())
 			return
 		}
-	})
 
-	http.HandleFunc("/get_available_port", func(w http.ResponseWriter, r *http.Request) {
-		data, err := os.ReadFile("/home/nonroot/.cloudflared/Records.txt")
+		w.WriteHeader(http.StatusCreated)
+		_, err = w.Write([]byte("success"))
 		if err != nil {
-			utils.ErrorLogger.Printf("Failed to read Records.txt file: %s\n", err.Error())
-			utils.SendErrorResponse(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		records := strings.Split(string(data), "\n")
-		if len(records) == 0 {
-			_, err := w.Write([]byte("3000"))
-			if err != nil {
-				utils.ErrorLogger.Printf("Failed to write to response writer: %s\n", err.Error())
-				utils.SendErrorResponse(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			return
-		}
-		lastRecord := strings.Split(records[len(records)-1], ",")
-
-		lastUsedPort, err := strconv.Atoi(strings.TrimSpace(lastRecord[2]))
-		if err != nil {
-			utils.ErrorLogger.Printf("Invalid file format for Records.txt: %s", err.Error())
-			utils.SendErrorResponse(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		nextPort := strconv.FormatUint(uint64(lastUsedPort)+1, 10)
-		_, err = w.Write([]byte(nextPort))
-		if err != nil {
-			utils.ErrorLogger.Printf("Failed to write to response writer: %s\n", err.Error())
+			utils.ErrorLogger.Printf("Failed to write response\nError Message: %sn", err.Error())
 			utils.SendErrorResponse(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
