@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"strings"
 
 	"openserver/utils"
 )
@@ -26,41 +25,9 @@ type jsonList struct {
 }
 
 func main() {
-	command := `cloudflared tunnel list --output json`
-
-	shCmd := exec.Command("sh", "-c", command)
-	var stdOut, stdErr bytes.Buffer
-
-	shCmd.Stderr = &stdErr
-	shCmd.Stdout = &stdOut
-
-	if err := shCmd.Run(); err != nil {
-		utils.ErrorLogger.Printf("Command failed: %s\nError while getting tunnel-id: %s", err.Error(), stdErr.String())
-		return
-	}
-
-	var tunnelJSONList []jsonList
-	err := json.Unmarshal(stdOut.Bytes(), &tunnelJSONList)
+	tunnelID, err := getTunneId()
 	if err != nil {
-		utils.ErrorLogger.Printf("Failed to parse tunnel list: %s", err.Error())
-		return
-	}
-
-	if len(tunnelJSONList) == 0 {
-		utils.ErrorLogger.Println("Empty tunnel list")
-		return
-	}
-	tunnelID := ""
-	for i := range tunnelJSONList {
-		if tunnelJSONList[i].Name == "openserver-tunnel" {
-			tunnelID = tunnelJSONList[i].Id
-			break
-		}
-	}
-
-	if tunnelID == "" {
-		utils.ErrorLogger.Println("No tunnel named openserver-tunnel found")
-		return
+		panic(err)
 	}
 
 	http.HandleFunc("/add_hostname", func(w http.ResponseWriter, r *http.Request) {
@@ -79,7 +46,7 @@ func main() {
 
 		cmd := exec.Command("cloudflared", "tunnel", "route", "dns", tunnelID, request.Hostname)
 
-		var stdErr bytes.Buffer
+		var stdErr, stdOut bytes.Buffer
 		cmd.Stderr = &stdErr
 
 		if err = cmd.Run(); err != nil {
@@ -109,33 +76,6 @@ func main() {
 		stdErr.Reset()
 		stdOut.Reset()
 
-		killCloudflared := exec.Command("pkill", "-f", `"cloudflared tunnel run"`)
-
-		killCloudflared.Stderr = &stdErr
-		killCloudflared.Stdout = &stdOut
-
-		if err = killCloudflared.Run(); err != nil {
-			utils.SendErrorResponse(w, err.Error(), http.StatusInternalServerError)
-			utils.ErrorLogger.Printf("Error while listing processes: %s", stdErr.String())
-			return
-		}
-
-		if strings.TrimSpace(stdOut.String()) == "" {
-			utils.ErrorLogger.Printf("Failed to kill the tunnel process")
-			return
-		}
-		stdErr.Reset()
-		stdOut.Reset()
-
-		rerunTunnel := exec.Command("cloudflared", "tunnel", "run", "openserver-tunnel")
-		rerunTunnel.Stderr = &stdErr
-
-		if err = rerunTunnel.Run(); err != nil {
-			utils.SendErrorResponse(w, err.Error(), http.StatusInternalServerError)
-			utils.ErrorLogger.Printf("Falied to start the tunnel: %s", stdErr.String())
-			return
-		}
-
 		w.WriteHeader(http.StatusCreated)
 		_, err = w.Write([]byte("success"))
 		if err != nil {
@@ -149,4 +89,44 @@ func main() {
 	if err != nil {
 		utils.ErrorLogger.Printf("Failed to start the http server: %s", err.Error())
 	}
+}
+
+func getTunneId() (string, error) {
+	command := `cloudflared tunnel list --output json`
+
+	shCmd := exec.Command("sh", "-c", command)
+	var stdOut, stdErr bytes.Buffer
+
+	shCmd.Stderr = &stdErr
+	shCmd.Stdout = &stdOut
+
+	if err := shCmd.Run(); err != nil {
+		utils.ErrorLogger.Printf("Command failed: %s\nError while getting tunnel-id: %s", err.Error(), stdErr.String())
+		return "", err
+	}
+
+	var tunnelJSONList []jsonList
+	err := json.Unmarshal(stdOut.Bytes(), &tunnelJSONList)
+	if err != nil {
+		utils.ErrorLogger.Printf("Failed to parse tunnel list: %s", err.Error())
+		return "", err
+	}
+
+	if len(tunnelJSONList) == 0 {
+		utils.ErrorLogger.Println("Empty tunnel list")
+		return "", err
+	}
+	tunnelID := ""
+	for i := range tunnelJSONList {
+		if tunnelJSONList[i].Name == "openserver-tunnel" {
+			tunnelID = tunnelJSONList[i].Id
+			break
+		}
+	}
+
+	if tunnelID == "" {
+		utils.ErrorLogger.Println("No tunnel named openserver-tunnel found")
+		return "", fmt.Errorf("No tunnel named openserver-tunnel found")
+	}
+	return tunnelID, nil
 }

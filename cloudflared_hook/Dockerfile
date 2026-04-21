@@ -1,4 +1,4 @@
-# build context for this dockerfile is .. directory
+# build context for this dockerfile is its parent directory (openserver/)
 
 FROM golang:1.25-alpine AS builder
 WORKDIR /app
