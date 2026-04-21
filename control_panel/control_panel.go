@@ -14,11 +14,9 @@ import (
 )
 
 type buildRequest struct {
-	Owner      string `json:"owner"`
-	Event      string `json:"event"`
-	RepoName   string `json:"repoName"`
-	CommitHash string `json:"commit"`
-	HostName   string `json:"hostname"` // domian/subdomain name for cloudflared tunnel config
+	Owner    string `json:"owner"`
+	RepoName string `json:"repoName"`
+	HostName string `json:"hostname"` // domian/subdomain name for cloudflared tunnel config
 }
 
 var tmpCloneDir string = "/home/nonroot/cloneTmp/"
@@ -40,12 +38,16 @@ func main() {
 			utils.SendErrorResponse(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if request.Event == "" || request.RepoName == "" || request.Owner == "" || request.CommitHash == "" || request.HostName == "" {
+		if request.RepoName == "" || request.Owner == "" || request.HostName == "" {
 			utils.SendErrorResponse(w, "missing required fields", http.StatusBadRequest)
 			return
 		}
 
-		utils.InfoLogger.Printf("Payload:\n{\n\tevent: %s,\n\towner: %s,\n\trepoName: %s,\n\tcommit: %s\n}\n", request.Event, request.Owner, request.RepoName, request.CommitHash)
+		utils.InfoLogger.Printf("Payload:\n{\n\towner: %s,\n\trepoName: %s,\n\thostName: %s\n}\n",
+			request.Owner,
+			request.RepoName,
+			request.HostName,
+		)
 
 		authHeader := r.Header.Get("Authorization")
 		err = authorization(authHeader)
@@ -53,7 +55,13 @@ func main() {
 			utils.SendErrorResponse(w, err.Error(), http.StatusUnauthorized)
 			return
 		}
-		cloneDir := tmpCloneDir + request.CommitHash
+
+		cloneDir := tmpCloneDir + request.Owner + "/" + request.RepoName + "/"
+		err = os.MkdirAll(cloneDir, 0o600)
+		if err != nil {
+			utils.SendErrorResponse(w, "Failed to create required directories", http.StatusBadRequest)
+			return
+		}
 		gitCmd := exec.Command("git", "clone", "https://github.com/"+request.Owner+"/"+request.RepoName, cloneDir)
 
 		var stdOut, stdErr bytes.Buffer
@@ -106,8 +114,7 @@ func main() {
 			utils.SendErrorResponse(w, "Failed to create cloudflared config record", http.StatusInternalServerError)
 			return
 		}
-
-		defer resp.Body.Close()
+		utils.CloseResponseBody(resp)
 
 		_, err = io.ReadAll(resp.Body)
 		if err != nil {
@@ -175,6 +182,27 @@ func runDockerContainer(imageTag string) error {
 }
 
 func deleteDockerImage(imageTag string) {
+	cmd := exec.Command(
+		"docker",
+		"ps",
+		"-q",
+		"--filter",
+		"ancestor="+imageTag,
+	)
+
+	out, err := cmd.Output()
+	if err != nil {
+		utils.ErrorLogger.Printf("Filtering docker containers failed for %s\nError Message:%s", imageTag, err.Error())
+	}
+
+	ids := strings.Fields(string(out))
+	if len(ids) > 0 {
+		stopCmd := exec.Command("docker", append([]string{"stop"}, ids...)...)
+		if err := stopCmd.Run(); err != nil {
+			utils.ErrorLogger.Printf("Failed to stop docker container.\nError message: %s", err.Error())
+		}
+	}
+
 	dockerImageRm := exec.Command("docker", "rmi", imageTag)
 
 	var stdOut, stdErr bytes.Buffer
