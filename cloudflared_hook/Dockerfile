@@ -12,7 +12,7 @@ COPY utils/ ./utils/
 WORKDIR /app/cloudflare_hook
 RUN CGO_ENABLED=0 GOOS=linux go build -o /app/cloudflared-hook-binary .
 
-FROM alpine:3.20
+FROM alpine:3.21
 
 RUN apk add --no-cache curl ca-certificates \
   && curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
