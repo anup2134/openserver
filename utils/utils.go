@@ -35,3 +35,10 @@ func CloseRequestBody(r *http.Request) {
 		ErrorLogger.Printf("Error occured while closing request body: %s\n", err.Error())
 	}
 }
+
+func CloseResponseBody(resp *http.Response) {
+	err := resp.Body.Close()
+	if err != nil {
+		ErrorLogger.Printf("Error occured while closing response body: %s\n", err.Error())
+	}
+}
