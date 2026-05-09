@@ -125,6 +125,7 @@ func main() {
 		}
 	})
 
+	http.HandleFunc("/add_hostname", addHostName)
 	err := http.ListenAndServe(":8080", nil)
 	if err != nil {
 		fmt.Printf("Error occured while starting http server: %s\n", err.Error())
